@@ -1,1 +1,1 @@
-# maisan-weather-bot
+# 麻衣さんお天気ボット
