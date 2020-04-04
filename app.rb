@@ -1,44 +1,35 @@
 require 'sinatra'
-require 'sinatra/reloader'
+require 'shotgun'
 require 'line/bot'
 require 'dotenv/load'
+require './api/http'
+require './config/line_config'
+require './lib/weather'
+require './lib/line'
 
-get '/' do
-  'Hello World'
-end
-
-def client
-  @client ||= Line::Bot::Client.new { |config|
-    config.channel_secret = ENV["LINE_CHANNEL_SECRET"]
-    config.channel_token = ENV["LINE_CHANNEL_TOKEN"]
-  }
-end
+include WeatherModule
+include LINEModule
 
 post '/line/callback' do
-  body = request.body.read
-
-  signature = request.env['HTTP_X_LINE_SIGNATURE']
-  unless client.validate_signature(body, signature)
-    error 400 do 'Bad Request' end
+  client = LINEConfig.client
+  
+  city_list = ['Tokyo', 'Kyoto', 'Osaka', 'Hiroshima']
+  text = "今日の天気を教えるわ！ \n"
+  city_list.each do |city|
+    http = Http.new(city)
+    res = http.get_weather_info
+    city_name = city_name_convert_jp(city)
+    weather = weather_convert_jp_by_id(res['weather'][0]['id'])
+    main_info = res['main']
+    text += line_text_create(city_name, weather, main_info)
   end
-
-  events = client.parse_events_from(body)
-  events.each { |event|
-    case event
-    when Line::Bot::Event::Message
-      case event.type
-      when Line::Bot::Event::MessageType::Text
-        message = {
-          type: 'text',
-          text: event.message['text']
-        }
-        client.reply_message(event['replyToken'], message)
-      when Line::Bot::Event::MessageType::Image, Line::Bot::Event::MessageType::Video
-        response = client.get_message_content(event.message['id'])
-        tf = Tempfile.open("content")
-        tf.write(response.body)
-      end
-    end
+  
+  message = {
+    type: 'text',
+    text: text
   }
-  "OK"
+
+  client.push_message(ENV["LINE_USER_ID"], message)
+
+  "200 OK"
 end
